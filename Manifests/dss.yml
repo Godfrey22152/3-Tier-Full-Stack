@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: yelp-camp-container
-          image: godfrey22152/campground:latest
+          image: godfrey22152/campa:latest
           ports:
             - containerPort: 3000
           env:
