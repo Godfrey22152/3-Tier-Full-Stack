@@ -1,0 +1,86 @@
+pipeline {
+    agent any
+    
+    tools{
+        nodejs 'node21'
+    }
+    
+    environment {
+        SCANNER_HOME= tool 'sonar-scanner'
+    }
+
+    stages {
+        stage('Git Checkout') {
+            steps {
+                git branch: 'main', credentialsId: 'git-cred', url: 'https://github.com/Godfrey22152/3-Tier-Full-Stack.git'
+            }
+        }
+        stage('Install package Dependencies') {
+            steps {
+                sh "npm install"
+            }
+        }
+        stage('Unit Test') {
+            steps {
+                sh "npm test"
+            }
+        }
+        stage('Trivy FS Scan') {
+            steps {
+                sh "trivy fs --format table -o fs-report.html ."
+            }
+        }
+        stage('SonarQube') {
+            steps {
+                withSonarQubeEnv('sonar') {
+                    
+                sh "$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectKey=Campground -Dsonar.projectName=Campground"
+            }
+        }
+        
+        }
+        stage('Docker Build & Tag') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
+                        sh "docker build -t godfrey22152/campa:latest ."
+                    }
+                }
+            }
+        }
+        stage('Trivy Image Scan') {
+            steps {
+                sh "trivy image --format table -o fs-report.html godfrey22152/campa:latest"
+            }
+        }
+        stage('Docker Push Image') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
+                        sh "docker push godfrey22152/campa:latest"
+                    }
+                }
+            }
+        }
+        stage('Deploy to EKS') {
+            steps {
+                withKubeCredentials(kubectlCredentials: [[caCertificate: '', clusterName: 'EKS-1', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', serverUrl: 'https://036F21E605B92D6B19437C3429F26E1A.yl4.eu-north-1.eks.amazonaws.com']]) {
+                sh "kubectl apply -f Manifests/dss.yml"
+                sleep 60
+                
+                
+            }
+            }
+        }
+        stage('Verify Deployment to EKS') {
+            steps {
+                withKubeCredentials(kubectlCredentials: [[caCertificate: '', clusterName: 'EKS-1', contextName: '', credentialsId: 'k8-token', namespace: 'webapps', serverUrl: 'https://036F21E605B92D6B19437C3429F26E1A.yl4.eu-north-1.eks.amazonaws.com']]) {
+                sh "kubectl get pods -n webapps"
+                sh "kubectl get svc -n webapps"
+                
+                
+            }
+            }
+        }
+    }
+}
